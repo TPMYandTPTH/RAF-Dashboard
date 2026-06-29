@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAF Dashboard — TP Talent Acquisition</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   RAF DASHBOARD — TP Malaysia & Thailand
+   Read-only employee referral viewer. Futuristic glass UI.
+   Reads two Google Sheets (Candidates + Rates) via published CSV.
+   Demo mode: ?demo=1  (or click "view sample data").
+   ============================================================ */
+:root{
+  --tp-slate:#4B4C6A; --tp-pink:#FF0082; --tp-pink-d:#D60070; --tp-turq:#00AF9B; --tp-turq-l:#0c8a7c;
+  --primary:#16172A; --primary-d:#000000;
+  --bg:#F6F7FB; --text:#1A1B2B; --text-dim:rgba(26,27,43,0.62); --text-faint:rgba(26,27,43,0.42);
+  --glass:#FFFFFF; --glass-2:#FBFBFE; --line:rgba(26,27,43,0.10); --line-2:rgba(26,27,43,0.14);
+  --blue:#2F7BE0; --green:#0C9E84; --amber:#E08A00; --red:#E23B4E; --grey:#7C7E94;
+  --r:20px; --r-sm:13px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:'Space Grotesk',system-ui,-apple-system,sans-serif;color:var(--text);
+  background:var(--bg);
+  background-image:
+    radial-gradient(120% 80% at 12% -12%, rgba(75,76,106,0.10), transparent 56%),
+    radial-gradient(100% 70% at 105% 112%, rgba(75,76,106,0.07), transparent 52%),
+    radial-gradient(80% 60% at -12% 108%, rgba(0,175,155,0.06), transparent 52%);
+  min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+.mono{font-family:'Space Mono',monospace}
+.wrap{max-width:560px;margin:0 auto;padding:22px 18px 80px}
+button{font-family:inherit;cursor:pointer}
+.hidden{display:none!important}
+@keyframes raf-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes raf-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+.glass{background:var(--glass);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 4px 20px rgba(26,27,43,0.06)}
+
+/* GATE */
+.gate{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 22px}
+.gate-inner{width:100%;max-width:412px}
+.gate-head{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:30px}
+.logo{width:62px;height:62px;border-radius:18px;display:flex;align-items:center;justify-content:center;
+  background:#fff;border:1px solid var(--line-2);
+  box-shadow:0 10px 26px rgba(26,27,43,0.10);animation:raf-float 6s ease-in-out infinite}
+.logo span{font-weight:700;font-size:24px;letter-spacing:.04em;color:var(--primary)}
+.gate-head h1{margin:22px 0 8px;font-size:27px;font-weight:600;letter-spacing:-0.02em}
+.gate-head p{font-size:13.5px;line-height:1.55;color:var(--text-dim);max-width:300px}
+.gate-card{padding:24px 22px}
+.gate-card label{display:block;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-faint);margin-bottom:10px}
+.gate-card input{width:100%;padding:14px 16px;font-family:'Space Mono',monospace;font-size:17px;letter-spacing:.08em;color:var(--text);background:#fff;border:1px solid var(--line);border-radius:var(--r-sm);transition:border-color .25s,box-shadow .25s;text-align:center;outline:none}
+.gate-card input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(22,23,42,0.10)}
+.gate-err{margin:10px 2px 0;font-size:12px;color:var(--red);display:flex;align-items:center;gap:6px;min-height:16px}
+.gate-err.show::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--red)}
+.remember{display:flex;align-items:center;gap:11px;margin:18px 2px 4px;cursor:pointer;user-select:none}
+.track{width:38px;height:22px;border-radius:11px;background:rgba(26,27,43,0.15);position:relative;transition:background .25s;flex-shrink:0}
+.track.on{background:var(--primary)}
+.knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .25s}
+.track.on .knob{transform:translateX(16px)}
+.remember span{font-size:13px;color:var(--text-dim)}
+.gate-btn{width:100%;margin-top:18px;padding:16px;font-size:15.5px;font-weight:600;color:#fff;border:none;border-radius:var(--r-sm);background:var(--primary);transition:transform .15s,box-shadow .25s;box-shadow:0 10px 26px rgba(22,23,42,0.22)}
+.gate-btn:active{transform:scale(.985)}
+.gate-demo{text-align:center;margin-top:20px;font-size:12.5px;color:var(--text-faint)}
+.gate-demo a{color:var(--tp-turq-l);cursor:pointer;border-bottom:1px solid rgba(31,211,182,0.3)}
+
+/* HEADER */
+.hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;animation:raf-in .4s ease}
+.hdr .t{font-size:19px;font-weight:600;letter-spacing:-0.01em}
+.hdr .s{font-family:'Space Mono',monospace;font-size:11px;color:var(--text-faint);letter-spacing:.06em;margin-top:2px}
+.hdr-right{display:flex;align-items:center;gap:9px}
+.demo-tag{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--amber);background:rgba(224,138,0,0.10);border:1px solid rgba(224,138,0,0.25);padding:4px 8px;border-radius:7px}
+.lang-sel{font-family:'Space Mono',monospace;background:#fff;border:1px solid var(--line);color:var(--text);border-radius:9px;height:34px;padding:0 8px;font-size:12px;outline:none;cursor:pointer}
+.hdr-logo{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--line-2)}
+.hdr-logo span{font-weight:700;font-size:13px;color:var(--primary)}
+
+/* SUMMARY */
+.summary{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px}
+.stat{padding:18px 18px;animation:raf-in .45s ease}
+.stat .l{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-faint)}
+.stat .v{font-size:30px;font-weight:700;margin-top:6px;letter-spacing:-0.02em}
+.stat .v.sm{font-size:21px}
+.stat .v2{font-size:12px;color:var(--text-dim);margin-top:3px}
+
+/* TOOLS */
+.tools{display:flex;gap:9px;margin-bottom:14px}
+.search{flex:1;display:flex;align-items:center;gap:9px;padding:0 13px;height:44px;background:#fff;border:1px solid var(--line);border-radius:var(--r-sm)}
+.search input{flex:1;background:transparent;border:none;color:var(--text);font-size:14px;font-family:inherit;outline:none}
+.search svg{flex-shrink:0;color:var(--text-faint)}
+.ask-ta{display:flex;align-items:center;justify-content:center;gap:7px;height:44px;padding:0 15px;border-radius:var(--r-sm);border:1px solid rgba(0,175,155,0.35);background:rgba(0,175,155,0.07);color:var(--tp-turq);font-size:13px;font-weight:500;white-space:nowrap}
+.ask-ta:active{transform:scale(.98)}
+
+/* CARD */
+.card{position:relative;border-radius:var(--r);overflow:hidden;margin-bottom:14px;background:#fff;border:1px solid var(--line);box-shadow:0 4px 20px rgba(26,27,43,0.07);animation:raf-in .4s ease;transition:border-color .2s,box-shadow .2s}
+.card.open{box-shadow:0 8px 28px rgba(26,27,43,0.10)}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--edge,var(--grey))}
+.card.blue{--edge:var(--blue)} .card.green{--edge:var(--green)} .card.amber{--edge:var(--amber)} .card.red{--edge:var(--red)} .card.grey{--edge:var(--grey)}
+.card-banner{padding:7px 16px 7px 18px;font-size:11.5px;display:flex;align-items:center;gap:7px}
+.card-banner.warn{background:rgba(224,138,0,0.08);color:var(--amber)}
+.card-banner.conflict{background:rgba(226,59,78,0.08);color:var(--red)}
+.card-head{display:flex;align-items:center;gap:12px;padding:16px 17px 16px 20px;cursor:pointer;user-select:none}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--edge,var(--grey));flex-shrink:0}
+.card-head .who{flex:1;min-width:0}
+.card-head .name{font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-0.01em}
+.card-head .pos{font-size:12.5px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.pill{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:6px 11px;border-radius:9px;white-space:nowrap;flex-shrink:0}
+.pill.blue{background:rgba(47,123,224,0.12);color:var(--blue)}
+.pill.green{background:rgba(12,158,132,0.12);color:var(--green)}
+.pill.amber{background:rgba(224,138,0,0.12);color:var(--amber)}
+.pill.red{background:rgba(226,59,78,0.12);color:var(--red)}
+.pill.grey{background:rgba(124,126,148,0.12);color:var(--grey)}
+.chev{flex-shrink:0;color:var(--text-faint);transition:transform .25s}
+.card.open .chev{transform:rotate(180deg)}
+.card-body{max-height:0;overflow:hidden;transition:max-height .3s ease}
+.card.open .card-body{max-height:720px}
+.card-inner{padding:4px 18px 18px 20px}
+.payout{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:15px}
+.payout .amt{font-size:30px;font-weight:700;letter-spacing:-0.02em}
+.payout .amt.mono{font-family:'Space Mono',monospace;font-weight:700}
+.payout .lock{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--text-faint)}
+.payout .none{font-size:13px;color:var(--text-dim)}
+.cycle{display:flex;align-items:flex-start;gap:6px;margin-bottom:9px}
+.cycle .step{flex:1;text-align:center}
+.cycle .bar{height:6px;border-radius:3px;background:rgba(26,27,43,0.09)}
+.cycle .step.done .bar{background:var(--green)}
+.cycle .step.active .bar{background:var(--amber)}
+.cycle .lbl{font-size:10.5px;color:var(--text-faint);margin-top:6px;line-height:1.2}
+.cycle .step.done .lbl,.cycle .step.active .lbl{color:var(--text-dim)}
+.cycle .ch{align-self:center;color:var(--text-faint);font-size:12px;margin-bottom:14px}
+.cycle-note{font-family:'Space Mono',monospace;font-size:11px;color:var(--text-dim)}
+.elig{display:inline-flex;align-items:center;gap:8px;background:rgba(12,158,132,0.10);color:var(--green);font-size:14px;font-weight:600;padding:10px 15px;border-radius:12px;border:1px solid rgba(12,158,132,0.25)}
+.meta{display:flex;flex-wrap:wrap;gap:7px 18px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.meta div{font-size:12px;color:var(--text-faint)}
+.meta div b{color:var(--text-dim);font-weight:500}
+.wa-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:9px;background:linear-gradient(135deg,var(--tp-turq),#0c8a7c);color:#fff;border:none;border-radius:var(--r-sm);height:48px;font-size:15px;font-weight:600;margin-top:14px;box-shadow:0 10px 26px rgba(0,175,155,0.20)}
+.wa-btn:active{transform:scale(.985)}
+.wa-lang{display:flex;align-items:center;gap:9px;margin-top:9px}
+.wa-lang label{font-size:11.5px;color:var(--text-faint)}
+.wa-lang select{flex:1;font-family:'Space Mono',monospace;background:#fff;border:1px solid var(--line);color:var(--text);border-radius:10px;height:36px;padding:0 9px;font-size:12px;outline:none}
+.divider{display:flex;align-items:center;gap:11px;margin:22px 2px 12px}
+.divider .lbl{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);font-weight:700}
+.divider .line{flex:1;height:1px;background:var(--line)}
+.empty{padding:30px 22px;text-align:center;animation:raf-in .4s ease}
+.empty h3{font-size:16px;font-weight:600;margin-bottom:8px}
+.empty p{font-size:13px;color:var(--text-dim);max-width:340px;margin:0 auto;line-height:1.6}
+.empty a{color:var(--tp-turq-l);border-bottom:1px solid rgba(31,211,182,0.3)}
+.faq{overflow:hidden;margin-top:18px}
+.faq-h{padding:15px 17px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
+.faq-h .t{font-size:15px;font-weight:600}
+.faq.open .faq-h .chev{transform:rotate(180deg)}
+.faq-body{max-height:0;overflow:hidden;transition:max-height .35s ease}
+.faq.open .faq-body{max-height:760px}
+.faq-inner{padding:0 17px 17px}
+.faq-inner h4{font-size:12.5px;font-weight:600;margin:14px 0 6px;color:var(--tp-turq-l)}
+.faq-inner p,.faq-inner li{font-size:12.5px;color:var(--text-dim);line-height:1.6}
+.faq-inner ul{padding-left:17px;margin:4px 0}
+.overlay{position:fixed;inset:0;background:rgba(26,27,43,0.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:22px;z-index:100}
+.overlay.show{display:flex}
+.modal{max-width:430px;width:100%;padding:22px}
+.modal h3{font-size:16px;font-weight:600;margin-bottom:6px}
+.modal .sub{font-size:12px;color:var(--text-dim);margin-bottom:13px}
+.modal-msg{background:#F6F7FB;border:1px solid var(--line);border-radius:var(--r-sm);padding:13px;font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.6;max-height:240px;overflow:auto}
+.modal-acts{display:flex;gap:9px;margin-top:15px}
+.modal-acts button{flex:1;height:44px;border-radius:var(--r-sm);font-size:14px;font-weight:600;border:none}
+.m-cancel{background:#F6F7FB;color:var(--text);border:1px solid var(--line)}
+.m-send{background:linear-gradient(135deg,var(--tp-turq),#0c8a7c);color:#fff}
+.ta-soon{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);background:rgba(224,138,0,0.10);border:1px solid rgba(224,138,0,0.25);padding:4px 9px;border-radius:7px;margin-bottom:13px}
+.ta-refresh{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--text-dim);display:flex;align-items:center;justify-content:center}
+.ta-refresh:active{transform:rotate(60deg)}
+.ta-threads{max-height:230px;overflow:auto;margin:12px 0;display:flex;flex-direction:column;gap:10px}
+.ta-threads:empty{display:none}
+.thread{border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.thread .q{padding:10px 12px;background:#F6F7FB;font-size:13px;color:var(--text)}
+.thread .q .meta{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--text-faint);margin-top:4px;display:flex;gap:8px}
+.thread .a{padding:10px 12px;font-size:13px;color:var(--text);border-top:1px solid var(--line);display:flex;gap:8px}
+.thread .a .tag{flex-shrink:0;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--green);background:rgba(12,158,132,0.10);border:1px solid rgba(12,158,132,0.25);padding:3px 7px;border-radius:6px;height:fit-content}
+.thread .awaiting{padding:9px 12px;font-size:12px;color:var(--amber);border-top:1px solid var(--line);display:flex;align-items:center;gap:7px;font-style:italic}
+.ta-cand{width:100%;background:#fff;border:1px solid var(--line);border-radius:var(--r-sm);color:var(--text);font-family:inherit;font-size:13px;height:42px;padding:0 11px;outline:none;margin-bottom:9px}
+#ta-text{width:100%;min-height:84px;background:#fff;border:1px solid var(--line);border-radius:var(--r-sm);color:var(--text);font-family:inherit;font-size:14px;padding:12px;outline:none;resize:vertical}
+#ta-text:focus,.ta-cand:focus{border-color:var(--primary)}
+.ask-ta{position:relative}
+.ask-ta .reply-dot{position:absolute;top:7px;right:9px;width:8px;height:8px;border-radius:50%;background:var(--green);border:1.5px solid #fff}
+.loading{text-align:center;padding:60px 20px;color:var(--text-dim)}
+.spinner{width:38px;height:38px;border:3px solid rgba(26,27,43,0.10);border-top-color:var(--primary);border-radius:50%;margin:0 auto 14px;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.footer{margin-top:26px;padding-top:18px;border-top:1px solid var(--line)}
+.footer-brand{display:flex;align-items:center;gap:9px;justify-content:center;margin-bottom:10px}
+.footer-brand .fb-logo{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--line-2)}
+.footer-brand .fb-logo span{font-weight:700;font-size:12px;color:var(--primary)}
+.footer-brand .fb-txt{font-size:12px;color:var(--text-dim);line-height:1.4}
+.footer-disc{text-align:center;font-size:10.5px;color:var(--text-faint);line-height:1.55;max-width:420px;margin:0 auto 8px}
+.footer-ssm{text-align:center;font-family:'Space Mono',monospace;font-size:9.5px;color:var(--text-faint);line-height:1.5}
+.footer-copy{text-align:center;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:var(--text-faint);margin-top:4px}
+.footer-social{display:flex;justify-content:center;gap:10px;margin:14px 0 16px;flex-wrap:wrap}
+.footer-social a{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--line);color:var(--text-dim);transition:transform .15s,border-color .2s,color .2s}
+.footer-social a:active{transform:scale(.92)}
+.footer-social a:hover{border-color:var(--primary);color:var(--primary)}
+.footer-social svg{width:18px;height:18px}
+
+/* refer-more CTA */
+.refer{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-bottom:16px;padding:17px;border:none;border-radius:var(--r-sm);font-size:16px;font-weight:600;color:#fff;background:var(--primary);box-shadow:0 10px 26px rgba(22,23,42,0.20);transition:transform .15s}
+.refer:active{transform:scale(.985)}
+.refer svg{flex-shrink:0}
+</style>
+</head>
+<body>
+
+<div id="gate" class="gate">
+  <div class="gate-inner">
+    <div class="gate-head">
+      <div class="logo"><span>TP</span></div>
+      <h1>RAF Dashboard</h1>
+      <p>Refer-a-Friend. Track your referred candidates, their status and payouts — in one place.</p>
+    </div>
+    <div class="gate-card glass">
+      <label for="bms-input">Your BMS ID</label>
+      <input id="bms-input" type="text" inputmode="numeric" maxlength="7" placeholder="e.g. 5559657" autocomplete="off">
+      <div class="gate-err" id="gate-err"></div>
+      <div class="remember" id="remember-row" onclick="App.toggleRemember()">
+        <div class="track on" id="rm-track"><div class="knob"></div></div>
+        <span>Remember me on this device</span>
+      </div>
+      <button class="gate-btn" onclick="App.login()">View my referrals</button>
+    </div>
+    <div class="gate-demo">For a quick look, <a onclick="App.loadDemo()">view sample data</a></div>
+  </div>
+</div>
+
+<div id="dash" class="wrap hidden">
+  <div class="hdr">
+    <div>
+      <div class="t" id="dash-title">My referrals</div>
+      <div class="s" id="dash-sub"></div>
+    </div>
+    <div class="hdr-right">
+      <span class="demo-tag hidden" id="demo-tag">DEMO</span>
+      <select class="lang-sel" id="ui-lang" onchange="App.changeLang(this.value)">
+        <option value="en">EN</option><option value="ms">MS</option><option value="zh">中文</option>
+        <option value="ja">日本</option><option value="ko">한국</option><option value="th">ไทย</option>
+      </select>
+      <div class="hdr-logo"><span>TP</span></div>
+    </div>
+  </div>
+  <div id="content">
+    <div class="loading"><div class="spinner"></div><span>Loading your referrals…</span></div>
+  </div>
+  <div class="footer">
+    <div class="footer-brand">
+      <div class="fb-logo"><span>TP</span></div>
+      <div class="fb-txt">TP Talent Acquisition · Malaysia &amp; Thailand</div>
+    </div>
+    <div class="footer-social">
+      <a href="https://www.linkedin.com/company/teleperformance-malaysia" target="_blank" rel="noopener" aria-label="LinkedIn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM3 9h4v12H3zM10 9h3.8v1.7h.05c.53-1 1.83-2.05 3.77-2.05 4.03 0 4.78 2.65 4.78 6.1V21H18.6v-5.5c0-1.31-.02-3-1.83-3-1.83 0-2.11 1.43-2.11 2.9V21H10z"/></svg></a>
+      <a href="https://www.instagram.com/tp_malaysia/" target="_blank" rel="noopener" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none"/></svg></a>
+      <a href="https://www.facebook.com/TPinMalaysia/" target="_blank" rel="noopener" aria-label="Facebook"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 9h2.5l.5-3H14V4.5c0-.9.3-1.5 1.6-1.5H17V.3C16.7.2 15.8 0 14.7 0 12.3 0 10.7 1.5 10.7 4.2V6H8v3h2.7v12H14z"/></svg></a>
+      <a href="https://www.tiktok.com/@tp_malaysia" target="_blank" rel="noopener" aria-label="TikTok"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 2c.3 2.1 1.5 3.7 3.5 4v3c-1.3.1-2.6-.3-3.7-1v6.6c0 3.4-2.5 6.1-5.9 6.1S4.5 18 4.5 14.7c0-3.1 2.4-5.6 5.4-5.6.3 0 .6 0 .9.1v3.1c-.3-.1-.6-.2-.9-.2-1.5 0-2.6 1.2-2.6 2.6 0 1.5 1.2 2.6 2.7 2.6 1.6 0 2.8-1.2 2.8-2.9V2z"/></svg></a>
+      <a href="https://wa.me/60193320265" target="_blank" rel="noopener" aria-label="WhatsApp"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.3A7.85 7.85 0 0 0 12 4a7.94 7.94 0 0 0-6.88 11.9L4 20l4.2-1.1A7.93 7.93 0 0 0 12 19.9a7.95 7.95 0 0 0 5.6-13.6ZM12 18.5a6.6 6.6 0 0 1-3.36-.92l-.24-.14-2.49.65.66-2.43-.16-.25A6.59 6.59 0 1 1 12 18.5Zm3.62-4.94c-.2-.1-1.17-.58-1.35-.64s-.31-.1-.44.1-.51.64-.62.77-.23.15-.42.05a5.4 5.4 0 0 1-1.6-1 6 6 0 0 1-1.1-1.37c-.12-.2 0-.31.08-.41s.2-.23.3-.35a1.3 1.3 0 0 0 .2-.34.37.37 0 0 0 0-.35c0-.1-.44-1.06-.6-1.45s-.32-.33-.44-.34h-.38a.72.72 0 0 0-.52.24 2.18 2.18 0 0 0-.68 1.62A3.78 3.78 0 0 0 8.2 12a8.7 8.7 0 0 0 3.33 2.94 11 11 0 0 0 1.11.41 2.67 2.67 0 0 0 1.23.08 2 2 0 0 0 1.31-.93 1.64 1.64 0 0 0 .11-.92c-.05-.08-.18-.13-.38-.23Z"/></svg></a>
+      <a href="https://line.me/R/ti/p/@286nmdsd" target="_blank" rel="noopener" aria-label="LINE"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 5.64 2 10.12c0 4.01 3.55 7.37 8.35 8 .32.07.77.21.88.49.1.25.07.64.03.89l-.14.85c-.04.25-.2.98.86.53s5.7-3.36 7.78-5.75c1.43-1.57 2.12-3.16 2.12-4.93C21.88 5.64 17.4 2 12 2zM8.1 12.74H6.06c-.3 0-.54-.24-.54-.54V8.6c0-.3.24-.54.54-.54s.54.24.54.54v3.06H8.1c.3 0 .54.24.54.54s-.24.54-.54.54zm2.12-.54c0 .3-.24.54-.54.54s-.54-.24-.54-.54V8.6c0-.3.24-.54.54-.54s.54.24.54.54v3.6zm4.42 0c0 .23-.15.44-.37.51-.06.02-.12.03-.17.03-.17 0-.33-.08-.43-.22l-1.86-2.53v2.21c0 .3-.24.54-.54.54s-.54-.24-.54-.54V8.6c0-.23.15-.44.37-.51.06-.02.11-.03.17-.03.17 0 .33.09.43.22l1.86 2.53V8.6c0-.3.24-.54.54-.54s.54.24.54.54v3.6zm3.32-2.34c.3 0 .54.24.54.54s-.24.54-.54.54h-1.5v.96h1.5c.3 0 .54.24.54.54s-.24.54-.54.54h-2.04c-.3 0-.54-.24-.54-.54V8.6c0-.3.24-.54.54-.54h2.04c.3 0 .54.24.54.54s-.24.54-.54.54h-1.5v.96h1.5z"/></svg></a>
+    </div>
+    <p class="footer-disc">This page is an overview. Conditions vary by project, region, and regulations. Final conditions are confirmed in the offer letter and employment contract.</p>
+    <p class="footer-ssm">Teleperformance Malaysia Sdn Bhd · SSM Registration No: 201601023769 (1194708-K)</p>
+    <p class="footer-copy">© <span id="year"></span> TP. ALL RIGHTS RESERVED.</p>
+  </div>
+</div>
+
+<div class="overlay" id="wa-modal">
+  <div class="modal glass">
+    <h3 id="wa-title">Send WhatsApp reminder</h3>
+    <div class="sub" id="wa-sub">Review the message before it opens in WhatsApp.</div>
+    <div class="modal-msg" id="wa-msg"></div>
+    <div class="modal-acts">
+      <button class="m-cancel" onclick="App.closeWa()">Cancel</button>
+      <button class="m-send" onclick="App.confirmWa()">Open WhatsApp</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ta-modal">
+  <div class="modal glass" style="max-width:460px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <h3 id="ta-h">Ask TA</h3>
+      <button class="ta-refresh" onclick="App.refreshAskTa()" aria-label="Refresh" title="Refresh replies">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+      </button>
+    </div>
+    <div class="sub" id="ta-sub">Send a question to the Talent Acquisition team. Replies appear here once TA responds.</div>
+    <div id="ta-threads" class="ta-threads"></div>
+    <select id="ta-cand" class="ta-cand"></select>
+    <textarea id="ta-text" placeholder="Type your question about a referral or payment…"></textarea>
+    <div class="modal-acts">
+      <button class="m-cancel" onclick="App.closeTa()" id="ta-close">Close</button>
+      <button class="m-send" onclick="App.submitTa()" id="ta-send">Send question</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CONFIG = {
+  CANDIDATES_CSV:'PASTE_CANDIDATES_SHEET_CSV_URL_HERE',
+  RATES_CSV:'PASTE_RATES_SHEET_CSV_URL_HERE',
+  ASKTA_CSV:'PASTE_ASKTA_SHEET_CSV_URL_HERE',
+  ASKTA_WEBAPP:'PASTE_ASKTA_APPS_SCRIPT_WEBAPP_URL_HERE',
+  CUTOFF_DAY:20, PAYOUT_DAY:4, RETENTION_STD:90, RETENTION_INT:120,
+  HALLO_BASE:'https://app.hallo.ai/tp-global-malaysia/ai-assessment/taQuestionnaire_speaking_listening_reading_writing_typing_speaking-en-GB_writing-en-GB_listening-en-GB_reading-en-GB_typing-en-GB_personality_cognitive_chat_hardskill/',
+  HALLO_TYPE:'WUtYSGg3SGpyOHRQRWo5c3RqMmg=',
+  HALLO_LANG:{en:'en-GB',ms:'ms',zh:'zh',ja:'ja',ko:'ko',th:'th'},
+  STATUS_FIELD:'recent'
+};
+
+const T={
+ en:{title:"My referrals",sub:"BMS",refs:"Referrals",potential:"Potential payout",search:"Search candidate…",askTa:"Ask TA",referMore:"Refer more friends",taGeneral:"General question (not about a specific candidate)",taReply:"TA reply",taAwaiting:"Awaiting TA reply…",
+   notHired:"Not yet hired — payout starts after onboarding",rateReview:"Rate needs review — matched by location only",
+   conflict:"Source conflict — verify with TA before payment",retention:"Retention",cutoff:"20th cutoff",paid:"Paid 4th",
+   eligible:"Eligible for payment",daysInto:"days into",dayRet:"-day retention",remind:"Remind to finish assessment",
+   msgLang:"Message language",reviewMsg:"Review the message before it opens in WhatsApp.",sendTitle:"Send WhatsApp reminder",
+   noRefs:"No referrals found",noRefsBody:"We couldn't find referrals under this BMS ID. If you've referred someone recently, it may take a few days to appear. See the payment rules below.",
+   referred:"Referred",start:"Start date",location:"Location",status:"Status",faqTitle:"Payment rules & FAQ",
+   gNeedAction:"Needs your nudge",gInProgress:"In progress",gHired:"Hired — eligible",gClosed:"Closed",
+   taSub:"Send a question to the Talent Acquisition team. Replies appear here once TA responds.",taPlaceholder:"Type your question about a referral or payment…",send:"Send question",close:"Close",cancel:"Cancel",openWa:"Open WhatsApp"},
+ ms:{title:"Rujukan saya",sub:"BMS",refs:"Rujukan",potential:"Bayaran berpotensi",search:"Cari calon…",askTa:"Tanya TA",referMore:"Rujuk lebih ramai rakan",taGeneral:"Soalan umum (bukan calon tertentu)",taReply:"Jawapan TA",taAwaiting:"Menunggu jawapan TA…",
+   notHired:"Belum diambil — bayaran bermula selepas onboarding",rateReview:"Kadar perlu disemak — padan ikut lokasi sahaja",
+   conflict:"Konflik sumber — sahkan dengan TA",retention:"Pengekalan",cutoff:"Tutup 20hb",paid:"Bayar 4hb",
+   eligible:"Layak untuk bayaran",daysInto:"hari dari",dayRet:"-hari pengekalan",remind:"Ingatkan buat penilaian",
+   msgLang:"Bahasa mesej",reviewMsg:"Semak mesej sebelum dibuka dalam WhatsApp.",sendTitle:"Hantar peringatan WhatsApp",
+   noRefs:"Tiada rujukan",noRefsBody:"Tiada rujukan dijumpai untuk BMS ID ini. Jika baru merujuk, mungkin ambil beberapa hari.",
+   referred:"Dirujuk",start:"Tarikh mula",location:"Lokasi",status:"Status",faqTitle:"Peraturan bayaran & FAQ",
+   gNeedAction:"Perlu tindakan",gInProgress:"Dalam proses",gHired:"Diambil — layak",gClosed:"Ditutup",
+   taSub:"Hantar soalan kepada pasukan Talent Acquisition. Jawapan akan muncul di sini setelah TA membalas.",taPlaceholder:"Taip soalan anda tentang rujukan atau bayaran…",send:"Hantar soalan",close:"Tutup",cancel:"Batal",openWa:"Buka WhatsApp"},
+ zh:{title:"我的推荐",sub:"BMS",refs:"推荐",potential:"潜在奖励",search:"搜索候选人…",askTa:"询问 TA",referMore:"推荐更多朋友",taGeneral:"一般问题（非特定候选人）",taReply:"TA 回复",taAwaiting:"等待 TA 回复…",
+   notHired:"尚未录用 — 入职后开始计算",rateReview:"金额待核对 — 仅按地点匹配",
+   conflict:"来源冲突 — 付款前请与 TA 核实",retention:"试用期",cutoff:"20号截止",paid:"4号发放",
+   eligible:"符合付款资格",daysInto:"天，共",dayRet:"天试用期",remind:"提醒完成测评",
+   msgLang:"消息语言",reviewMsg:"打开 WhatsApp 前请查看消息。",sendTitle:"发送 WhatsApp 提醒",
+   noRefs:"未找到推荐",noRefsBody:"未找到此 BMS ID 的推荐。如最近推荐，可能需要几天显示。",
+   referred:"推荐于",start:"入职日期",location:"地点",status:"状态",faqTitle:"付款规则与常见问题",
+   gNeedAction:"需要提醒",gInProgress:"进行中",gHired:"已录用 — 符合",gClosed:"已关闭",
+   taSub:"向人才招聘团队提交问题。TA 回复后将显示在此处。",taPlaceholder:"输入有关推荐或付款的问题…",send:"发送问题",close:"关闭",cancel:"取消",openWa:"打开 WhatsApp"},
+ ja:{title:"私の紹介",sub:"BMS",refs:"紹介",potential:"見込み報酬",search:"候補者を検索…",askTa:"TAに質問",referMore:"友達をもっと紹介",taGeneral:"一般的な質問（特定の候補者以外）",taReply:"TAの返信",taAwaiting:"TAの返信待ち…",
+   notHired:"未採用 — 入社後に開始",rateReview:"金額確認待ち — 勤務地のみ照合",
+   conflict:"ソース競合 — 支払前にTAへ確認",retention:"試用期間",cutoff:"20日締切",paid:"4日支払",
+   eligible:"支払対象",daysInto:"日経過 /",dayRet:"日間の試用",remind:"アセスメント完了を促す",
+   msgLang:"メッセージ言語",reviewMsg:"WhatsAppで開く前に確認してください。",sendTitle:"WhatsApp送信",
+   noRefs:"紹介なし",noRefsBody:"このBMS IDの紹介が見つかりません。最近の紹介は数日かかる場合があります。",
+   referred:"紹介日",start:"入社日",location:"勤務地",status:"ステータス",faqTitle:"支払ルールとFAQ",
+   gNeedAction:"要対応",gInProgress:"進行中",gHired:"採用 — 対象",gClosed:"終了",
+   taSub:"Talent Acquisition チームに質問を送信します。TAが返信するとここに表示されます。",taPlaceholder:"紹介や支払いに関する質問を入力…",send:"質問を送信",close:"閉じる",cancel:"キャンセル",openWa:"WhatsAppを開く"},
+ ko:{title:"내 추천",sub:"BMS",refs:"추천",potential:"예상 보상",search:"후보자 검색…",askTa:"TA에게 질문",referMore:"친구 더 추천하기",taGeneral:"일반 질문 (특정 후보자 아님)",taReply:"TA 답변",taAwaiting:"TA 답변 대기 중…",
+   notHired:"아직 채용 안 됨 — 입사 후 시작",rateReview:"금액 확인 필요 — 지역으로만 매칭",
+   conflict:"소스 충돌 — 지급 전 TA에 확인",retention:"수습 기간",cutoff:"20일 마감",paid:"4일 지급",
+   eligible:"지급 대상",daysInto:"일 경과 /",dayRet:"일 수습",remind:"평가 완료 알림",
+   msgLang:"메시지 언어",reviewMsg:"WhatsApp에서 열기 전 확인하세요.",sendTitle:"WhatsApp 보내기",
+   noRefs:"추천 없음",noRefsBody:"이 BMS ID의 추천을 찾을 수 없습니다. 최근 추천은 며칠 걸릴 수 있습니다.",
+   referred:"추천일",start:"입사일",location:"지역",status:"상태",faqTitle:"지급 규칙 및 FAQ",
+   gNeedAction:"알림 필요",gInProgress:"진행 중",gHired:"채용됨 — 대상",gClosed:"종료",
+   taSub:"탤런트 어퀴지션 팀에 질문을 보냅니다. TA가 답변하면 여기에 표시됩니다.",taPlaceholder:"추천 또는 지급에 관한 질문을 입력하세요…",send:"질문 보내기",close:"닫기",cancel:"취소",openWa:"WhatsApp 열기"},
+ th:{title:"การแนะนำของฉัน",sub:"BMS",refs:"การแนะนำ",potential:"รางวัลที่เป็นไปได้",search:"ค้นหาผู้สมัคร…",askTa:"ถาม TA",referMore:"แนะนำเพื่อนเพิ่ม",taGeneral:"คำถามทั่วไป (ไม่เกี่ยวกับผู้สมัครคนใด)",taReply:"คำตอบจาก TA",taAwaiting:"รอคำตอบจาก TA…",
+   notHired:"ยังไม่ถูกจ้าง — เริ่มหลังเริ่มงาน",rateReview:"ต้องตรวจสอบจำนวนเงิน — จับคู่ตามสถานที่",
+   conflict:"แหล่งที่มาขัดแย้ง — ตรวจสอบกับ TA",retention:"ระยะทดลองงาน",cutoff:"ปิด 20",paid:"จ่าย 4",
+   eligible:"มีสิทธิ์รับเงิน",daysInto:"วัน จาก",dayRet:"วันทดลองงาน",remind:"เตือนทำแบบประเมิน",
+   msgLang:"ภาษาข้อความ",reviewMsg:"ตรวจสอบข้อความก่อนเปิด WhatsApp",sendTitle:"ส่ง WhatsApp",
+   noRefs:"ไม่พบการแนะนำ",noRefsBody:"ไม่พบการแนะนำสำหรับ BMS ID นี้ หากเพิ่งแนะนำ อาจใช้เวลาสองสามวัน",
+   referred:"แนะนำเมื่อ",start:"วันเริ่มงาน",location:"สถานที่",status:"สถานะ",faqTitle:"กฎการจ่ายเงินและ FAQ",
+   gNeedAction:"ต้องเตือน",gInProgress:"กำลังดำเนินการ",gHired:"จ้างแล้ว — มีสิทธิ์",gClosed:"ปิดแล้ว",
+   taSub:"ส่งคำถามถึงทีม Talent Acquisition คำตอบจะแสดงที่นี่เมื่อ TA ตอบกลับ",taPlaceholder:"พิมพ์คำถามเกี่ยวกับการแนะนำหรือการจ่ายเงิน…",send:"ส่งคำถาม",close:"ปิด",cancel:"ยกเลิก",openWa:"เปิด WhatsApp"}
+};
+
+const WA_MSG={
+ en:(n,r)=>`${r?`Hi ${n}! It's ${r} from TP.`:`Hi ${n}! I'm reaching out from TP.`} Thanks for applying — just a reminder to finish your TP AI assessment (Hallo.ai); it's the next step. Check your email for the link, or use this one:\n${App.halloLink('en')}\n\nLet me know if you need any help!`,
+ ms:(n,r)=>`${r?`Hai ${n}! Ini ${r} dari TP.`:`Hai ${n}! Saya menghubungi anda dari TP.`} Terima kasih kerana memohon — sekadar peringatan untuk melengkapkan penilaian AI TP (Hallo.ai); ia langkah seterusnya. Semak e-mel anda, atau guna pautan ini:\n${App.halloLink('ms')}\n\nBeritahu saya jika perlukan bantuan!`,
+ zh:(n,r)=>`${r?`你好 ${n}！我是 TP 的 ${r}。`:`你好 ${n}！我是 TP 团队的成员。`}感谢申请 — 提醒你完成 TP 的 AI 测评（Hallo.ai），这是下一步。请查看邮箱链接，或使用此链接：\n${App.halloLink('zh')}\n\n有需要随时找我！`,
+ ja:(n,r)=>`${r?`こんにちは ${n} さん！TPの ${r} です。`:`こんにちは ${n} さん！TPからご連絡しています。`}ご応募ありがとうございます — 次のステップとして TP の AI アセスメント（Hallo.ai）の完了をお願いします。メールのリンク、またはこちらをご利用ください：\n${App.halloLink('ja')}\n\nご不明な点があればお知らせください！`,
+ ko:(n,r)=>`${r?`안녕하세요 ${n}님! TP의 ${r}입니다.`:`안녕하세요 ${n}님! TP에서 연락드립니다.`} 지원해 주셔서 감사합니다 — 다음 단계로 TP AI 평가(Hallo.ai)를 완료해 주세요. 이메일 링크를 확인하시거나 이 링크를 사용하세요:\n${App.halloLink('ko')}\n\n도움이 필요하면 알려주세요!`,
+ th:(n,r)=>`${r?`สวัสดี ${n}! นี่คือ ${r} จาก TP`:`สวัสดี ${n}! ติดต่อจาก TP`} ขอบคุณที่สมัคร — ขอเตือนให้ทำแบบประเมิน AI ของ TP (Hallo.ai) ให้เสร็จ ตรวจสอบลิงก์ในอีเมล หรือใช้ลิงก์นี้:\n${App.halloLink('th')}\n\nหากต้องการความช่วยเหลือ แจ้งได้เลย!`
+};
+
+const FAQ={
+ en:{payouts:{h:"How payout amounts work",p:"Your bonus depends on the role, language, client, and location — and the rate locked in on the candidate's start date. Amounts change month to month and some are temporary marketing boosts, so each card shows the amount that applied when your friend was hired."},
+   timeline:{h:"Payment timeline",items:["Standard roles: payout after <b>90 days</b> retention.","Interpreter / LLS roles: payout after <b>120 days</b>.","Once retention completes, it's processed in the next cycle: <b>cut-off on the 20th</b>, paid on the <b>4th of the following month</b>."]},
+   elig:{h:"Eligibility",items:["Candidate must be referred via <b>RAF</b> (not previously applied through another source).","Referral must not already be an active TP employee.","A candidate appearing under a different source is flagged for TA to verify before payment."]},
+   wa:{h:"The WhatsApp reminder",p:"For candidates still early in the process, send a friendly nudge to finish their TP AI assessment (Hallo.ai). Pick a language, preview the message, then it opens in WhatsApp ready to send from your number."},
+   foot:"Questions about a specific payment? Use “Ask TA”."},
+ ms:{payouts:{h:"Cara jumlah bayaran dikira",p:"Bonus anda bergantung pada peranan, bahasa, klien dan lokasi — serta kadar yang terkunci pada tarikh mula calon. Jumlah berubah dari bulan ke bulan dan sesetengahnya adalah galakan pemasaran sementara, jadi setiap kad menunjukkan jumlah yang terpakai semasa rakan anda diambil bekerja."},
+   timeline:{h:"Garis masa bayaran",items:["Peranan standard: bayaran selepas pengekalan <b>90 hari</b>.","Peranan Jurubahasa / LLS: bayaran selepas <b>120 hari</b>.","Setelah pengekalan selesai, ia diproses dalam kitaran seterusnya: <b>tutup pada 20hb</b>, dibayar pada <b>4hb bulan berikutnya</b>."]},
+   elig:{h:"Kelayakan",items:["Calon mesti dirujuk melalui <b>RAF</b> (bukan memohon sebelum ini melalui sumber lain).","Rujukan tidak boleh sudah menjadi pekerja TP yang aktif.","Calon yang muncul di bawah sumber berbeza akan ditandakan untuk TA sahkan sebelum bayaran."]},
+   wa:{h:"Peringatan WhatsApp",p:"Untuk calon yang masih di peringkat awal, hantar peringatan mesra untuk melengkapkan penilaian AI TP (Hallo.ai) mereka. Pilih bahasa, pratonton mesej, kemudian ia dibuka dalam WhatsApp sedia untuk dihantar dari nombor anda."},
+   foot:"Soalan tentang bayaran tertentu? Guna “Tanya TA”."},
+ zh:{payouts:{h:"奖励金额如何计算",p:"您的奖励取决于职位、语言、客户和地点，以及候选人入职日期锁定的金额。金额逐月变化，部分为临时营销提升，因此每张卡显示您朋友入职时适用的金额。"},
+   timeline:{h:"付款时间表",items:["标准职位：<b>90 天</b>试用期后发放。","口译 / LLS 职位：<b>120 天</b>后发放。","试用期完成后，将在下一周期处理：<b>20 号截止</b>，<b>次月 4 号</b>发放。"]},
+   elig:{h:"资格",items:["候选人必须通过 <b>RAF</b> 推荐（此前未通过其他来源申请）。","被推荐人不得已是在职的 TP 员工。","在不同来源下出现的候选人将被标记，由 TA 在付款前核实。"]},
+   wa:{h:"WhatsApp 提醒",p:"对于仍处于早期阶段的候选人，发送友好提醒以完成其 TP AI 测评（Hallo.ai）。选择语言，预览消息，然后在 WhatsApp 中打开，可从您的号码发送。"},
+   foot:"对某笔付款有疑问？请使用“询问 TA”。"},
+ ja:{payouts:{h:"報酬額の仕組み",p:"報酬は職種、言語、クライアント、勤務地、そして候補者の入社日に確定したレートによって決まります。金額は月ごとに変わり、一部は一時的なマーケティング上乗せのため、各カードにはご友人が採用された時点で適用された金額が表示されます。"},
+   timeline:{h:"支払いスケジュール",items:["標準職種：<b>90日間</b>の在籍後に支払い。","通訳 / LLS 職種：<b>120日間</b>後に支払い。","在籍が完了すると次のサイクルで処理されます：<b>20日締切</b>、<b>翌月4日</b>支払い。"]},
+   elig:{h:"支給条件",items:["候補者は <b>RAF</b> 経由の紹介であること（過去に他の経路で応募していないこと）。","紹介者がすでに在籍中の TP 従業員でないこと。","別の経路で表示される候補者は、支払い前に TA が確認するためフラグが付きます。"]},
+   wa:{h:"WhatsApp リマインダー",p:"選考の初期段階にある候補者には、TP の AI アセスメント（Hallo.ai）の完了を促す丁寧なメッセージを送れます。言語を選び、メッセージをプレビューすると、ご自身の番号から送信できる状態で WhatsApp が開きます。"},
+   foot:"特定の支払いについてのご質問は「TAに質問」をご利用ください。"},
+ ko:{payouts:{h:"보상 금액 산정 방식",p:"보상은 직무, 언어, 고객사, 지역, 그리고 후보자의 입사일에 확정된 요율에 따라 달라집니다. 금액은 매월 변동되며 일부는 일시적인 마케팅 인상분이므로, 각 카드에는 친구가 채용된 시점에 적용된 금액이 표시됩니다."},
+   timeline:{h:"지급 일정",items:["일반 직무: <b>90일</b> 근속 후 지급.","통역 / LLS 직무: <b>120일</b> 후 지급.","근속이 완료되면 다음 주기에 처리됩니다: <b>20일 마감</b>, <b>다음 달 4일</b> 지급."]},
+   elig:{h:"지급 자격",items:["후보자는 <b>RAF</b>를 통해 추천되어야 합니다(이전에 다른 경로로 지원하지 않았을 것).","피추천인은 이미 재직 중인 TP 직원이 아니어야 합니다.","다른 출처로 표시되는 후보자는 지급 전 TA가 확인하도록 표시됩니다."]},
+   wa:{h:"WhatsApp 알림",p:"아직 초기 단계에 있는 후보자에게 TP AI 평가(Hallo.ai) 완료를 권하는 친근한 메시지를 보낼 수 있습니다. 언어를 선택하고 메시지를 미리 본 뒤, 본인 번호에서 보낼 수 있도록 WhatsApp이 열립니다."},
+   foot:"특정 지급에 대한 질문이 있으신가요? “TA에게 질문”을 이용하세요."},
+ th:{payouts:{h:"วิธีคำนวณจำนวนเงินรางวัล",p:"รางวัลของคุณขึ้นอยู่กับตำแหน่ง ภาษา ลูกค้า และสถานที่ รวมถึงอัตราที่ล็อกไว้ ณ วันเริ่มงานของผู้สมัคร จำนวนเงินเปลี่ยนแปลงในแต่ละเดือนและบางส่วนเป็นโปรโมชันการตลาดชั่วคราว ดังนั้นแต่ละการ์ดจะแสดงจำนวนเงินที่ใช้ ณ ตอนที่เพื่อนของคุณได้รับการจ้างงาน"},
+   timeline:{h:"กำหนดการจ่ายเงิน",items:["ตำแหน่งมาตรฐาน: จ่ายหลังครบระยะทดลองงาน <b>90 วัน</b>","ตำแหน่งล่าม / LLS: จ่ายหลัง <b>120 วัน</b>","เมื่อครบระยะทดลองงาน จะดำเนินการในรอบถัดไป: <b>ปิดรอบวันที่ 20</b> จ่าย <b>วันที่ 4 ของเดือนถัดไป</b>"]},
+   elig:{h:"คุณสมบัติ",items:["ผู้สมัครต้องได้รับการแนะนำผ่าน <b>RAF</b> (ไม่เคยสมัครผ่านแหล่งอื่นมาก่อน)","ผู้ถูกแนะนำต้องไม่เป็นพนักงาน TP ที่ทำงานอยู่แล้ว","ผู้สมัครที่ปรากฏภายใต้แหล่งที่มาอื่นจะถูกทำเครื่องหมายให้ TA ตรวจสอบก่อนจ่ายเงิน"]},
+   wa:{h:"การแจ้งเตือนผ่าน WhatsApp",p:"สำหรับผู้สมัครที่ยังอยู่ในขั้นต้น ส่งข้อความเตือนอย่างเป็นมิตรให้ทำแบบประเมิน AI ของ TP (Hallo.ai) ให้เสร็จ เลือกภาษา ดูตัวอย่างข้อความ จากนั้นจะเปิดใน WhatsApp พร้อมส่งจากเบอร์ของคุณ"},
+   foot:"มีคำถามเกี่ยวกับการจ่ายเงินรายการใด? ใช้ “ถาม TA”"}
+};
+
+const SG={
+ applicationReceived:{color:"blue",label:"Application received",pay:false,reminder:true,prio:1,
+   keys:["application received","contact attempt","textapply","external portal","internal portal","recruiter submitted","agency submission","employee referral","incomplete","new application"]},
+ assessment:{color:"blue",label:"In assessment",pay:false,reminder:true,prio:1,
+   keys:["assessment","shl","interview","screening","loss ops","pass talent","pass ops","talent review"]},
+ offer:{color:"blue",label:"Offer / onboarding",pay:false,reminder:false,prio:3,
+   keys:["offer requested","ready to offer","offer extended","offer accepted","job offer","onboarding started","onboarding","cleared to start"]},
+ probation:{color:"amber",label:"Hired — probation",pay:"pending",reminder:false,prio:3,
+   keys:["hired (probation)","new starter","new hire","probation"]},
+ confirmed:{color:"green",label:"Hired — confirmed",pay:"eligible",reminder:false,prio:2,
+   keys:["hired (confirmed)","graduate","confirmed","passed probation"]},
+ hiredGeneric:{color:"amber",label:"Hired",pay:"auto",reminder:false,prio:3,keys:["hired"]},
+ previouslyApplied:{color:"grey",label:"Previously applied",pay:false,reminder:false,prio:4,keys:["previously applied"]},
+ notSelected:{color:"red",label:"Not selected",pay:false,reminder:false,prio:5,
+   keys:["eliminated","not selected","withdrew","withdrawn","rejected","declined","no show","no hire"]}
+};
+function mapStatus(statusText,source){
+  const s=(statusText||"").toLowerCase().trim(), src=(source||"").toLowerCase().trim();
+  const isRAF= src==="raf"||src.includes("raf")||src.includes("referral")||src==="";
+  if(!isRAF&&src!=="") return {...SG.previouslyApplied,key:"previouslyApplied"};
+  if(!s) return {...SG.applicationReceived,key:"applicationReceived"};
+  for(const k of ["notSelected","confirmed","probation","offer","assessment","applicationReceived","previouslyApplied"])
+    if(SG[k].keys.some(key=>s.includes(key))) return {...SG[k],key:k};
+  if(s.includes("hired")) return {...SG.hiredGeneric,key:"hiredGeneric"};
+  return {...SG.applicationReceived,key:"applicationReceived"};
+}
+
+const App={
+  state:{bms:null,lang:"en",demo:false,candidates:[],rates:[],remember:true,pendingWa:null,askTa:[],referrerName:""},
+  _mine:[],
+
+  init(){
+    const p=new URLSearchParams(location.search);
+    if(p.get("lang")&&T[p.get("lang")]){this.state.lang=p.get("lang");document.getElementById("ui-lang").value=this.state.lang;}
+    const nm=(p.get("name")||"").trim();
+    if(nm){this.state.referrerName=nm.slice(0,40);this.setCookie("raf_name",encodeURIComponent(this.state.referrerName),30);}
+    else{const cn=this.getCookie("raf_name");if(cn){try{this.state.referrerName=decodeURIComponent(cn).slice(0,40);}catch(e){}}}
+    if(p.get("demo")==="1"||p.get("demo")==="true"){this.loadDemo();return;}
+    const urlBms=p.get("bms"), saved=this.getCookie("raf_bms");
+    if(urlBms&&/^[0-9]{4,7}$/.test(urlBms)){this.state.bms=urlBms;this.showDash();this.loadLive();return;}
+    if(saved&&/^[0-9]{4,7}$/.test(saved)) document.getElementById("bms-input").value=saved;
+    document.getElementById("bms-input").addEventListener("keydown",e=>{if(e.key==="Enter")this.login();});
+  },
+  toggleRemember(){this.state.remember=!this.state.remember;document.getElementById("rm-track").classList.toggle("on",this.state.remember);},
+  login(){
+    const v=document.getElementById("bms-input").value.trim(), err=document.getElementById("gate-err");
+    if(!/^[0-9]{4,7}$/.test(v)){err.textContent="BMS ID must be 4–7 digits, numbers only.";err.classList.add("show");return;}
+    err.textContent="";err.classList.remove("show");
+    if(this.state.remember)this.setCookie("raf_bms",v,30); else this.setCookie("raf_bms","",-1);
+    this.state.bms=v;this.state.demo=false;this.showDash();this.loadLive();
+  },
+  loadDemo(){
+    this.state.demo=true;this.state.bms="5559657";this.showDash();
+    document.getElementById("demo-tag").classList.remove("hidden");
+    setTimeout(()=>{this.state.candidates=this.mockCandidates();this.state.rates=this.mockRates();this.state.askTa=this.mockAskTa();this.render();},500);
+  },
+  showDash(){document.getElementById("gate").classList.add("hidden");document.getElementById("dash").classList.remove("hidden");this.applyLang();const y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();},
+
+  async loadLive(){
+    const content=document.getElementById("content");
+    if(CONFIG.CANDIDATES_CSV.startsWith("PASTE_")||CONFIG.RATES_CSV.startsWith("PASTE_")){
+      content.innerHTML=`<div class="empty glass"><h3>Sheets not connected yet</h3><p>Paste your two published CSV URLs into the CONFIG block at the top of index.html, or open <a href="?demo=1">demo mode</a> to preview with sample data.</p></div>`;return;
+    }
+    const hasAskTa=!CONFIG.ASKTA_CSV.startsWith("PASTE_");
+    const urls=[CONFIG.CANDIDATES_CSV,CONFIG.RATES_CSV];
+    if(hasAskTa)urls.push(CONFIG.ASKTA_CSV);
+    const grab=u=>fetch(u).then(x=>{if(!x.ok)throw new Error("HTTP "+x.status);return x.text();});
+    const res=await Promise.allSettled(urls.map(grab));
+    const [candR,rateR]=res;
+    if(candR.status!=="fulfilled"||rateR.status!=="fulfilled"){
+      const why=(candR.status!=="fulfilled"?candR.reason:rateR.reason);
+      content.innerHTML=`<div class="empty glass"><h3>Couldn't load data</h3><p>Check both sheets are shared "Anyone with the link – Viewer" and the CSV URLs are correct.<br>${this.esc(String(why&&why.message||why||""))}</p></div>`;return;
+    }
+    try{
+      this.state.candidates=this.parseCandidates(this.parseCSV(candR.value));
+      this.state.rates=this.parseRates(this.parseCSV(rateR.value));
+      const askR=hasAskTa?res[2]:null;
+      this.state.askTa=(askR&&askR.status==="fulfilled")?this.parseAskTa(this.parseCSV(askR.value)):[];
+      this.render();
+    }catch(e){console.error(e);content.innerHTML=`<div class="empty glass"><h3>Couldn't load data</h3><p>${this.esc(String(e.message||e))}</p></div>`;}
+  },
+
+  parseCSV(text){
+    const rows=[];let row=[],f="",q=false;text=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+    for(let i=0;i<text.length;i++){const c=text[i];
+      if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i++;}else q=false;}else f+=c;}
+      else{if(c==='"')q=true;else if(c===','){row.push(f);f="";}else if(c==='\n'){row.push(f);rows.push(row);row=[];f="";}else f+=c;}}
+    if(f!==""||row.length){row.push(f);rows.push(row);}
+    return rows.filter(r=>r.some(c=>c.trim()!==""));
+  },
+  parseCandidates(rows){
+    if(rows.length<2)return[];
+    const h=rows[0].map(x=>x.trim().toLowerCase());
+    const fi=(frag)=>h.findIndex(x=>x.includes(frag));
+    const iStatus=h.findIndex(x=>x==="status")>=0?h.findIndex(x=>x==="status"):fi("status");
+    const iRecent=fi("recent status"),iName=fi("full name"),iEmail=fi("email"),
+      iPhone=h.findIndex(x=>x.includes("number")||x.includes("phone")),iStart=fi("start date"),
+      iNat=fi("nationality"),iSrc=h.findIndex(x=>x==="source"),iSrcN=fi("source name"),
+      iUpd=fi("updated"),iLoc=fi("location"),iSys=fi("system id"),iEmp=fi("employee");
+    const out=[];
+    for(let i=1;i<rows.length;i++){const r=rows[i],g=n=>n>=0&&n<r.length?(r[n]||"").trim():"";
+      out.push({status:g(iStatus),recent:g(iRecent),name:g(iName),email:g(iEmail),phone:g(iPhone),
+        startDate:g(iStart),nationality:g(iNat),source:g(iSrc),sourceName:g(iSrcN),updated:g(iUpd),location:g(iLoc),
+        sysId:g(iSys),empNo:g(iEmp),position:""});}
+    return out;
+  },
+  parseRates(rows){
+    if(rows.length<2)return[];
+    const h=rows[0].map(x=>x.trim().toLowerCase()),f=n=>h.findIndex(x=>x.includes(n));
+    const iL=f("location"),iR=f("role"),iLa=f("language"),iC=f("client"),iA=f("amount"),iCu=f("currency"),iF=f("effective_from"),iT=f("effective_to"),iN=f("note");
+    const out=[];
+    for(let i=1;i<rows.length;i++){const r=rows[i],g=n=>n>=0&&n<r.length?(r[n]||"").trim():"";
+      out.push({location:g(iL),role:g(iR),language:g(iLa),client:g(iC),amount:parseFloat((g(iA)||"0").replace(/[^0-9.]/g,""))||0,currency:(g(iCu)||"RM").toUpperCase(),from:g(iF),to:g(iT),notes:g(iN)});}
+    return out;
+  },
+  parseAskTa(rows){
+    if(rows.length<2)return[];
+    const h=rows[0].map(x=>x.trim().toLowerCase()),f=n=>h.findIndex(x=>x.includes(n));
+    const iTs=f("timestamp"),iBms=f("bms"),iCand=f("candidate"),iQ=f("question"),iA=f("answer"),iAt=f("answered"),iSt=f("status");
+    const out=[];
+    for(let i=1;i<rows.length;i++){const r=rows[i],g=n=>n>=0&&n<r.length?(r[n]||"").trim():"";
+      const ans=g(iA);
+      out.push({ts:g(iTs),bms:g(iBms),candidate:g(iCand),question:g(iQ),answer:ans,answeredAt:g(iAt),status:ans?"answered":(g(iSt)||"open")});}
+    return out;
+  },
+  parseDate(s){if(!s)return null;s=s.trim();let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[1]-1,+m[2]);m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);const d=new Date(s);return isNaN(d)?null:d;},
+  norm(s){return(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");},
+  statusOf(c){return CONFIG.STATUS_FIELD==="status"?(c.status||c.recent):(c.recent||c.status);},
+  dedupe(list){
+    // iCIMS exports can carry several rows per person (one per status change).
+    // Collapse them on a stable identity, keeping the most recently updated row.
+    const seen=new Map();
+    for(const c of list){
+      const key=(c.sysId&&c.sysId.trim())||(c.empNo&&c.empNo.trim())
+        ||(this.norm(c.name)+"|"+this.norm(c.location));
+      const prev=seen.get(key);
+      if(!prev){seen.set(key,c);continue;}
+      const du=this.parseDate(c.updated),dp=this.parseDate(prev.updated);
+      let keep=prev;
+      if(du&&dp)keep=du>=dp?c:prev;
+      else if(du&&!dp)keep=c;
+      else if(!du&&!dp)keep=(c.startDate&&!prev.startDate)?c:prev;
+      seen.set(key,keep);
+    }
+    return [...seen.values()];
+  },
+  matchRate(c){
+    const hire=this.parseDate(c.startDate),cl=this.norm(c.location),ref=hire||new Date();
+    const scored=[];
+    for(const rt of this.state.rates){
+      const fr=this.parseDate(rt.from),to=this.parseDate(rt.to);
+      if(fr&&ref<fr)continue;if(to&&ref>to)continue;
+      const rl=this.norm(rt.location);let sc=0;
+      if(rl&&cl){if(rl===cl)sc+=3;else if(cl.includes(rl)||rl.includes(cl))sc+=2;else if(rl.length>=4&&[...Array(rl.length-3)].some((_,k)=>cl.includes(rl.slice(k,k+4))))sc+=1;}
+      if(sc>0)scored.push({rate:rt,sc});
+    }
+    if(!scored.length)return null;
+    const bs=Math.max(...scored.map(o=>o.sc));
+    const top=scored.filter(o=>o.sc===bs);
+    // Ambiguous when several rates tie on location but disagree on the amount —
+    // we can't pick by location alone, so flag for review rather than guess confidently.
+    const distinct=new Set(top.map(o=>o.rate.amount+"|"+o.rate.currency));
+    const ambiguous=distinct.size>1;
+    return {rate:top[0].rate,confident:bs>=3&&!ambiguous,ambiguous,tied:top.length>1};
+  },
+  cycleInfo(c,rate){
+    const hire=this.parseDate(c.startDate);if(!hire)return{hired:false};
+    // Live iCIMS exports carry no job title, so fall back to the location and the
+    // matched rate's role/language to spot interpreter / LLS roles (120-day retention).
+    const hay=[c.position,c.location,rate&&rate.role,rate&&rate.language].filter(Boolean).join(" ");
+    const interp=/interpreter|language line|\blls\b/i.test(hay);
+    const ret=interp?CONFIG.RETENTION_INT:CONFIG.RETENTION_STD,today=new Date();
+    const di=Math.floor((today-hire)/864e5);
+    const elig=new Date(hire);elig.setDate(elig.getDate()+ret);
+    return{hired:true,retDays:ret,daysIn:Math.max(0,di),retentionDone:di>=ret,eligDate:elig,interp};
+  },
+
+  render(){
+    const t=T[this.state.lang];
+    this._mine=this.dedupe(this.state.candidates.filter(c=>String(c.sourceName).trim()===String(this.state.bms).trim()));
+    document.getElementById("dash-sub").textContent=`${t.sub} · ${this.state.bms}`;
+    this.renderFiltered("");
+  },
+  renderFiltered(query){
+    const t=T[this.state.lang],c=document.getElementById("content"),list=this._mine;
+    const totals={};
+    list.forEach(cand=>{const si=mapStatus(this.statusOf(cand),cand.source),m=this.matchRate(cand);
+      if(m&&si.pay!==false){totals[m.rate.currency]=(totals[m.rate.currency]||0)+m.rate.amount;}});
+    const pk=Object.keys(totals);
+    const potMain=pk.length?`${pk[0]} ${totals[pk[0]].toLocaleString()}`:"—";
+    const potExtra=pk.slice(1).map(k=>`+ ${k} ${totals[k].toLocaleString()}`).join("  ");
+
+    let html=`
+      <div class="summary">
+        <div class="stat glass"><div class="l">${t.refs}</div><div class="v">${list.length}</div></div>
+        <div class="stat glass"><div class="l">${t.potential}</div><div class="v sm mono">${potMain}</div>${potExtra?`<div class="v2 mono">${potExtra}</div>`:""}</div>
+      </div>
+      <button class="refer" onclick="App.referMore()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+        ${t.referMore}
+      </button>
+      <div class="tools">
+        <div class="search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+          <input id="search-input" type="text" placeholder="${t.search}" value="${query.replace(/"/g,'&quot;')}" oninput="App.onSearch(this.value)">
+        </div>
+        <button class="ask-ta" onclick="App.openTa()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          ${t.askTa}
+        </button>
+      </div>`;
+
+    const filtered=query?list.filter(c=>(c.name||"").toLowerCase().includes(query.toLowerCase())||(c.email||"").toLowerCase().includes(query.toLowerCase())):list;
+
+    if(!filtered.length){
+      html+=`<div class="empty glass"><h3>${t.noRefs}</h3><p>${t.noRefsBody}</p></div>`;
+    }else{
+      const withMeta=filtered.map((c)=>({c,origIdx:this._mine.indexOf(c),si:mapStatus(this.statusOf(c),c.source)}));
+      withMeta.sort((a,b)=> a.si.prio-b.si.prio);
+      const band=(p)=> p===1?t.gNeedAction : (p===2?t.gHired : (p===3?t.gInProgress : t.gClosed));
+      // count per band
+      const counts={};
+      withMeta.forEach(o=>{const b=band(o.si.prio);counts[b]=(counts[b]||0)+1;});
+      let lastBand=null,shown=0;
+      withMeta.forEach((o)=>{
+        const bnd=band(o.si.prio);
+        if(bnd!==lastBand){ html+=`<div class="divider"><span class="lbl">${bnd} (${counts[bnd]})</span><span class="line"></span></div>`; lastBand=bnd; }
+        html+=this.cardHTML(o.c,o.origIdx,o.si, shown===0); shown++;
+      });
+    }
+    html+=this.faqHTML();
+    c.innerHTML=html;
+    this.updateReplyDot();
+  },
+
+  cardHTML(cand,idx,si,openFirst){
+    const t=T[this.state.lang],m=this.matchRate(cand),cyc=this.cycleInfo(cand,m&&m.rate);
+    let banner="";
+    if(m&&!m.confident&&si.pay!==false) banner=`<div class="card-banner warn">⚠ ${t.rateReview}</div>`;
+
+    let payout="";
+    if(si.pay===false){
+      payout=(si.key==="notSelected"||si.key==="previouslyApplied")?"":`<div class="payout"><span class="none">${t.notHired}</span></div>`;
+    }else if(!cyc.hired){
+      const amt=m?`${m.rate.currency} ${m.rate.amount.toLocaleString()}`:"—";
+      payout=`<div class="payout"><span class="amt mono">${amt}</span></div><div class="cycle-note">${t.notHired}</div>`;
+    }else{
+      const amt=m?`${m.rate.currency} ${m.rate.amount.toLocaleString()}`:"—";
+      const lock=cand.startDate?`${t.referred} ${this.fmtDate(cand.startDate)}`:"";
+      payout=`<div class="payout"><span class="amt mono">${amt}</span>${lock?`<span class="lock">${lock}</span>`:""}</div>`;
+      if(cyc.retentionDone){payout+=`<div class="elig">✓ ${t.eligible}</div>`;}
+      else{const pct=Math.min(100,Math.round(cyc.daysIn/cyc.retDays*100));
+        payout+=`<div class="cycle">
+          <div class="step active"><div class="bar"></div><div class="lbl">${t.retention}</div></div><span class="ch">›</span>
+          <div class="step"><div class="bar"></div><div class="lbl">${t.cutoff}</div></div><span class="ch">›</span>
+          <div class="step"><div class="bar"></div><div class="lbl">${t.paid}</div></div>
+        </div><div class="cycle-note">${cyc.daysIn} ${t.daysInto} ${cyc.retDays}${t.dayRet} · ${pct}%</div>`;}
+    }
+
+    const meta=`<div class="meta">
+      ${cand.location?`<div>${t.location}: <b>${this.esc(cand.location)}</b></div>`:""}
+      ${cand.startDate?`<div>${t.start}: <b>${this.fmtDate(cand.startDate)}</b></div>`:""}
+      <div>${t.status}: <b>${this.esc(this.statusOf(cand)||"—")}</b></div></div>`;
+
+    let wa="";
+    if(si.reminder&&cand.phone){
+      wa=`<button class="wa-btn" onclick="event.stopPropagation();App.openWa(${idx})">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 6.32A7.85 7.85 0 0 0 12 4a7.94 7.94 0 0 0-6.88 11.89L4 20l4.2-1.1A7.93 7.93 0 0 0 12 19.9a7.95 7.95 0 0 0 5.6-13.58ZM12 18.5a6.6 6.6 0 0 1-3.36-.92l-.24-.14-2.49.65.66-2.43-.16-.25A6.59 6.59 0 1 1 12 18.5Zm3.62-4.94c-.2-.1-1.17-.58-1.35-.64s-.31-.1-.44.1-.51.64-.62.77-.23.15-.42.05a5.4 5.4 0 0 1-1.6-1 6 6 0 0 1-1.1-1.37c-.12-.2 0-.31.08-.41s.2-.23.3-.35a1.3 1.3 0 0 0 .2-.34.37.37 0 0 0 0-.35c0-.1-.44-1.06-.6-1.45s-.32-.33-.44-.34h-.38a.72.72 0 0 0-.52.24 2.18 2.18 0 0 0-.68 1.62A3.78 3.78 0 0 0 8.2 12a8.7 8.7 0 0 0 3.33 2.94 11 11 0 0 0 1.11.41 2.67 2.67 0 0 0 1.23.08 2 2 0 0 0 1.31-.93 1.64 1.64 0 0 0 .11-.92c-.05-.08-.18-.13-.38-.23Z"/></svg>
+          ${t.remind}</button>
+        <div class="wa-lang"><label>${t.msgLang}</label>
+          <select id="wa-lang-${idx}" onclick="event.stopPropagation()">
+            <option value="en">English</option><option value="ms">Malay</option><option value="zh">中文</option>
+            <option value="ja">日本語</option><option value="ko">한국어</option><option value="th">ไทย</option>
+          </select></div>`;
+    }
+
+    return `
+      <div class="card ${si.color}${openFirst?' open':''}">
+        ${banner}
+        <div class="card-head" onclick="this.parentElement.classList.toggle('open')">
+          <span class="dot"></span>
+          <div class="who"><div class="name">${this.esc(cand.name||"—")}</div>${cand.position?`<div class="pos">${this.esc(cand.position)}</div>`:""}</div>
+          <span class="pill ${si.color}">${si.label}</span>
+          <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <div class="card-body"><div class="card-inner">${payout}${meta}${wa}</div></div>
+      </div>`;
+  },
+
+  faqHTML(){
+    const t=T[this.state.lang];
+    const f=FAQ[this.state.lang]||FAQ.en;
+    return `<div class="faq glass" id="faq">
+      <div class="faq-h" onclick="document.getElementById('faq').classList.toggle('open')">
+        <span class="t">${t.faqTitle}</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="faq-body"><div class="faq-inner">
+        <h4>${f.payouts.h}</h4>
+        <p>${f.payouts.p}</p>
+        <h4>${f.timeline.h}</h4>
+        <ul>${f.timeline.items.map(x=>`<li>${x}</li>`).join("")}</ul>
+        <h4>${f.elig.h}</h4>
+        <ul>${f.elig.items.map(x=>`<li>${x}</li>`).join("")}</ul>
+        <h4>${f.wa.h}</h4>
+        <p>${f.wa.p}</p>
+        <p style="margin-top:12px;font-size:11.5px;color:var(--text-faint)">${f.foot}</p>
+      </div></div></div>`;
+  },
+
+  onSearch(q){const inp=document.getElementById("search-input"),pos=inp.selectionStart;this.renderFiltered(q);const ni=document.getElementById("search-input");if(ni){ni.focus();try{ni.setSelectionRange(pos,pos);}catch(e){}}},
+
+  openWa(idx){
+    const cand=this._mine[idx];if(!cand)return;
+    const t=T[this.state.lang];
+    const sel=document.getElementById(`wa-lang-${idx}`),lang=sel?sel.value:"en";
+    const referrer=this.state.demo?"Amr":(this.state.referrerName||"");
+    const msg=(WA_MSG[lang]||WA_MSG.en)(cand.name||"there",referrer);
+    this.state.pendingWa={phone:cand.phone,msg};
+    const mo=document.getElementById("wa-modal");
+    mo.querySelector("#wa-title").textContent=t.sendTitle;
+    mo.querySelector("#wa-sub").textContent=t.reviewMsg;
+    mo.querySelector(".m-cancel").textContent=t.cancel;
+    mo.querySelector(".m-send").textContent=t.openWa;
+    document.getElementById("wa-msg").textContent=msg;
+    mo.classList.add("show");
+  },
+  confirmWa(){const p=this.state.pendingWa;if(!p)return;let ph=(p.phone||"").replace(/[^0-9]/g,"");if(ph.startsWith("0"))ph="6"+ph;window.open(`https://wa.me/${ph}?text=${encodeURIComponent(p.msg)}`,"_blank");this.closeWa();},
+  closeWa(){document.getElementById("wa-modal").classList.remove("show");this.state.pendingWa=null;},
+
+  openTa(){
+    this.renderAskTa();
+    // populate candidate dropdown (their referrals + a general option)
+    const sel=document.getElementById("ta-cand");
+    const t=T[this.state.lang];
+    let opts=`<option value="">${t.taGeneral}</option>`;
+    this._mine.forEach(c=>{ opts+=`<option value="${this.esc(c.name)}">${this.esc(c.name)}</option>`; });
+    sel.innerHTML=opts;
+    document.getElementById("ta-h").textContent=t.askTa;
+    document.getElementById("ta-sub").textContent=t.taSub;
+    document.getElementById("ta-close").textContent=t.close;
+    document.getElementById("ta-send").textContent=t.send;
+    const txt=document.getElementById("ta-text");txt.value="";txt.placeholder=t.taPlaceholder;
+    document.getElementById("ta-modal").classList.add("show");
+  },
+  closeTa(){document.getElementById("ta-modal").classList.remove("show");},
+  myThreads(){return this.state.askTa.filter(x=>String(x.bms).trim()===String(this.state.bms).trim()).sort((a,b)=>new Date(b.ts||0)-new Date(a.ts||0));},
+  renderAskTa(){
+    const t=T[this.state.lang],box=document.getElementById("ta-threads"),mine=this.myThreads();
+    if(!mine.length){box.innerHTML="";return;}
+    box.innerHTML=mine.map(x=>`
+      <div class="thread">
+        <div class="q">${this.esc(x.question)}
+          <div class="meta">${x.candidate?`<span>${this.esc(x.candidate)}</span>`:""}${x.ts?`<span>${this.fmtDate(x.ts)}</span>`:""}</div>
+        </div>
+        ${x.status==="answered"
+          ? `<div class="a"><span class="tag">${t.taReply}</span><span>${this.esc(x.answer)}</span></div>`
+          : `<div class="awaiting">◷ ${t.taAwaiting}</div>`}
+      </div>`).join("");
+  },
+  async submitTa(){
+    const t=T[this.state.lang];
+    const q=document.getElementById("ta-text").value.trim();
+    const cand=document.getElementById("ta-cand").value;
+    if(!q) return;
+    const payload={bms:this.state.bms,candidate:cand,question:q,ts:new Date().toISOString()};
+    // optimistic add
+    this.state.askTa.unshift({...payload,answer:"",answeredAt:"",status:"open"});
+    document.getElementById("ta-text").value="";
+    this.renderAskTa();
+    // write to sheet via Apps Script web app (fire-and-forget; opaque response under no-cors)
+    if(!this.state.demo && !CONFIG.ASKTA_WEBAPP.startsWith("PASTE_")){
+      try{
+        await fetch(CONFIG.ASKTA_WEBAPP,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
+      }catch(e){console.error("Ask TA post failed",e);}
+    }
+  },
+  async refreshAskTa(){
+    if(this.state.demo) { this.renderAskTa(); return; }
+    if(CONFIG.ASKTA_CSV.startsWith("PASTE_")) return;
+    try{
+      const txt=await fetch(CONFIG.ASKTA_CSV+(CONFIG.ASKTA_CSV.includes("?")?"&":"?")+"_t="+Date.now()).then(x=>x.text());
+      this.state.askTa=this.parseAskTa(this.parseCSV(txt));
+      this.renderAskTa();
+      this.updateReplyDot();
+    }catch(e){console.error(e);}
+  },
+  updateReplyDot(){
+    const btn=document.querySelector(".ask-ta");if(!btn)return;
+    const hasReply=this.myThreads().some(x=>x.status==="answered");
+    let dot=btn.querySelector(".reply-dot");
+    if(hasReply&&!dot){dot=document.createElement("span");dot.className="reply-dot";btn.appendChild(dot);}
+    else if(!hasReply&&dot){dot.remove();}
+  },
+  referMore(){ window.open(`https://tpmyandtpth.github.io/RAF/#${this.state.bms}`,"_blank"); },
+
+  halloLink(l){return `${CONFIG.HALLO_BASE}${CONFIG.HALLO_LANG[l]||"en-GB"}?assessmentTypeId=${CONFIG.HALLO_TYPE}`;},
+  changeLang(l){this.state.lang=l;this.applyLang();if(this._mine.length||this.state.candidates.length)this.render();},
+  applyLang(){document.getElementById("dash-title").textContent=T[this.state.lang].title;},
+  fmtDate(s){const d=this.parseDate(s);if(!d)return s;return d.toLocaleDateString("en-MY",{day:"numeric",month:"short",year:"numeric"});},
+  esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));},
+  setCookie(n,v,d){const x=new Date();x.setTime(x.getTime()+d*864e5);document.cookie=`${n}=${v};expires=${x.toUTCString()};path=/`;},
+  getCookie(n){return document.cookie.split("; ").find(r=>r.startsWith(n+"="))?.split("=")[1]||"";},
+
+  mockCandidates(){
+    const d=(n)=>{const x=new Date();x.setDate(x.getDate()-n);return `${x.getMonth()+1}/${x.getDate()}/${x.getFullYear()}`;};
+    return [
+      {name:"Chanthida Wong",email:"chan.w@email.com",phone:"+66889195996",recent:"Application Received",status:"Application Received",sourceName:"5559657",source:"RAF",location:"TH--Bangkok",startDate:"",nationality:"Thailand",position:"Customer Service Representative - Thai",referrerName:"Amr"},
+      {name:"Phong Nguyen",email:"phong.ng@email.com",phone:"+60174669871",recent:"External Portal",status:"Incomplete",sourceName:"5559657",source:"RAF",location:"MY-Remote (Cloud Campus)",startDate:"",nationality:"Vietnam",position:"Interpreter - Vietnamese",referrerName:"Amr"},
+      {name:"Aiman Yusof",email:"aiman.y@email.com",phone:"+60123778899",recent:"Assessment - Loss Ops",status:"Assessment",sourceName:"5559657",source:"RAF",location:"KCP",startDate:"",nationality:"Malaysia",position:"Inbound Sales Representative - English",referrerName:"Amr"},
+      {name:"Sieon Lee",email:"sieon.lee@email.com",phone:"+60183931348",recent:"Hired (Confirmed)",status:"Hired",sourceName:"5559657",source:"RAF",location:"G-tower",startDate:d(128),nationality:"Korea",position:"Customer Success Specialist - Korean",referrerName:"Amr"},
+      {name:"Koji Yamamoto",email:"koji.y@email.com",phone:"+60111222333",recent:"Hired (Confirmed)",status:"Hired",sourceName:"5559657",source:"RAF",location:"Singha Complex",startDate:d(140),nationality:"Japan",position:"Customer Success Specialist - Japanese",referrerName:"Amr"},
+      {name:"Tanaka Hiroshi",email:"tanaka.h@email.com",phone:"+60182708243",recent:"Hired (Probation)",status:"Hired",sourceName:"5559657",source:"RAF",location:"Bayan Lepas One Precinct",startDate:d(48),nationality:"Japan",position:"Customer Success Specialist - Japanese",referrerName:"Amr"},
+      {name:"Liu Mei Hua",email:"liu.mh@email.com",phone:"+60165552201",recent:"Hired (Probation)",status:"Hired",sourceName:"5559657",source:"RAF",location:"KCP",startDate:d(35),nationality:"Malaysia",position:"Content Moderator - Mandarin",referrerName:"Amr"},
+      {name:"Nadia Rahman",email:"nadia.r@email.com",phone:"+60198123456",recent:"Hired (Probation)",status:"Hired",sourceName:"5559657",source:"RAF",location:"Livingston Tower",startDate:d(72),nationality:"Malaysia",position:"Service Advisor - Cantonese",referrerName:"Amr"},
+      {name:"David Ong",email:"david.o@email.com",phone:"+60123456789",recent:"Hired",status:"Hired",sourceName:"5559657",source:"LinkedIn",location:"G-tower",startDate:d(100),nationality:"Malaysia",position:"Customer Service Representative - Mandarin",referrerName:"Amr"},
+      {name:"Chloe Tan",email:"chloe.t@email.com",phone:"+60177665544",recent:"Hired",status:"Hired",sourceName:"5559657",source:"JobStreet",location:"KCP",startDate:d(95),nationality:"Malaysia",position:"Customer Success Specialist - Banking Mandarin",referrerName:"Amr"},
+      {name:"Nurul Lydia",email:"nurul.l@email.com",phone:"+60198887766",recent:"Eliminated - Failed Assessment",status:"Eliminated",sourceName:"5559657",source:"RAF",location:"Livingston Tower",startDate:"",nationality:"Malaysia",position:"Assisted Sales Advisor - Malay",referrerName:"Amr"},
+      {name:"Park Min Jun",email:"park.mj@email.com",phone:"+60165001122",recent:"Eliminated - No Show",status:"Eliminated",sourceName:"5559657",source:"RAF",location:"G-tower",startDate:"",nationality:"Korea",position:"Ad Sales Specialist - Korean",referrerName:"Amr"}
+    ];
+  },
+  mockRates(){
+    return [
+      {location:"Bayan Lepas One Precinct",role:"Customer Success Specialist",language:"Japanese",client:"",amount:8000,currency:"RM",from:"",to:"",notes:""},
+      {location:"G-tower",role:"Customer Success Specialist",language:"Korean",client:"",amount:8000,currency:"RM",from:"",to:"",notes:""},
+      {location:"G-tower",role:"Ad Sales Specialist",language:"Korean",client:"",amount:8000,currency:"RM",from:"",to:"",notes:""},
+      {location:"G-tower",role:"Customer Service Representative",language:"Mandarin",client:"",amount:2000,currency:"RM",from:"",to:"",notes:""},
+      {location:"KCP",role:"Content Moderator",language:"Mandarin",client:"Video Hosting",amount:4000,currency:"RM",from:"2026-05-01",to:"2026-06-30",notes:"Marketing boost"},
+      {location:"KCP",role:"Customer Success Specialist",language:"Banking Mandarin",client:"Digital Banking",amount:4000,currency:"RM",from:"2026-05-01",to:"2026-06-30",notes:"Marketing boost"},
+      {location:"KCP",role:"Inbound Sales Representative",language:"English",client:"",amount:1000,currency:"RM",from:"",to:"",notes:""},
+      {location:"TH--Bangkok",role:"Customer Service Representative",language:"Thai",client:"",amount:3500,currency:"THB",from:"",to:"",notes:""},
+      {location:"Singha Complex",role:"Customer Success Specialist",language:"Japanese",client:"",amount:30000,currency:"THB",from:"",to:"",notes:""},
+      {location:"Livingston Tower",role:"Assisted Sales Advisor",language:"Malay",client:"",amount:2000,currency:"RM",from:"",to:"",notes:""},
+      {location:"Livingston Tower",role:"Service Advisor",language:"Cantonese",client:"Mobile",amount:4000,currency:"RM",from:"2026-01-01",to:"2026-06-30",notes:"Marketing boost"},
+      {location:"MY-Remote (Cloud Campus)",role:"Interpreter",language:"Vietnamese",client:"",amount:700,currency:"USD",from:"",to:"",notes:""}
+    ];
+  },
+  mockAskTa(){
+    const d=(n)=>{const x=new Date();x.setDate(x.getDate()-n);return x.toISOString();};
+    return [
+      {ts:d(1),bms:"5559657",candidate:"Tanaka Hiroshi",question:"When will Tanaka's payout be processed?",answer:"He completes 90 days on 12 Aug. It'll be in the cycle after — cut-off 20 Aug, paid 4 Sep.",answeredAt:d(0),status:"answered"},
+      {ts:d(2),bms:"5559657",candidate:"Phong Nguyen",question:"Phong hasn't done the assessment yet, can you check?",answer:"",answeredAt:"",status:"open"},
+      {ts:d(5),bms:"5559657",candidate:"",question:"Is the Mandarin Johor boost still active this month?",answer:"Yes, until 30 June. After that it returns to the standard rate.",answeredAt:d(4),status:"answered"}
+    ];
+  }
+};
+App.init();
+</script>
+</body>
+</html>
